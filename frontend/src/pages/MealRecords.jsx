@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
 function MealRecords() {
+  const navigate = useNavigate();
   const [meals, setMeals] = useState([]);
   const [members, setMembers] = useState([]);
   const [recipes, setRecipes] = useState([]);
@@ -18,6 +20,25 @@ function MealRecords() {
     ingredients: []
   });
 
+
+  const today = new Date();
+  const weekday = today.getDay() === 0 ? 7 : today.getDay();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - (weekday - 1));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const formatDate = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const [collectStartDate, setCollectStartDate] = useState(formatDate(monday));
+  const [collectEndDate, setCollectEndDate] = useState(formatDate(sunday));
+  const [collecting, setCollecting] = useState(false);
+  const [collectResult, setCollectResult] = useState(null);
+  const [showCollectModal, setShowCollectModal] = useState(false);
   const mealTypes = ['早餐', '午餐', '晚餐', '加餐'];
 
   useEffect(() => {
@@ -92,13 +113,29 @@ function MealRecords() {
     }
   };
 
+  const handleCollect = async () => {
+    try {
+      setCollecting(true);
+      const response = await axios.post("/api/shopping/generate-from-meals", {
+        start_date: collectStartDate,
+        end_date: collectEndDate
+      });
+      setShowCollectModal(false);
+      setCollectResult(response.data);
+    } catch (err) {
+      alert(err.response?.data?.error || "归集失败");
+    } finally {
+      setCollecting(false);
+    }
+  };
+
   const closeModal = () => {
     setShowModal(false);
     setFormData({
       date: selectedDate,
-      meal_type: '午餐',
-      recipe_id: '',
-      recipe_name: '',
+      meal_type: "午餐",
+      recipe_id: "",
+      recipe_name: "",
       servings: 1,
       member_ids: [],
       ingredients: []
@@ -118,12 +155,20 @@ function MealRecords() {
           <h1 className="text-2xl font-bold text-gray-900">饮食记录</h1>
           <p className="text-gray-500 mt-1">记录每日饮食，自动统计营养摄入</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-        >
-          + 添加记录
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowCollectModal(true)}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            🛒 一键归集到购物清单
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            + 添加记录
+          </button>
+        </div>
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm">
@@ -344,6 +389,94 @@ function MealRecords() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+
+      {showCollectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-2">归集食材到购物清单</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              选择日期范围，系统将汇总此期间所有饮食记录的食材，自动合并到购物清单（同名同单位食材会累加数量，已购物品保持勾选状态）
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">开始日期</label>
+                <input
+                  type="date"
+                  value={collectStartDate}
+                  onChange={(e) => setCollectStartDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">结束日期</label>
+                <input
+                  type="date"
+                  value={collectEndDate}
+                  onChange={(e) => setCollectEndDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  required
+                />
+              </div>
+            </div>
+            <div className="flex space-x-3 pt-6">
+              <button
+                type="button"
+                onClick={() => setShowCollectModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleCollect}
+                disabled={collecting}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {collecting ? "归集中..." : "开始归集"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {collectResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4 text-green-600">✅ {collectResult.message}</h2>
+            <div className="space-y-3 mb-6">
+              <p className="text-gray-700">
+                <span className="font-medium">{collectResult.mealCount}</span> 道菜，共
+                <span className="font-medium"> {collectResult.ingredientKinds}</span> 种食材
+              </p>
+              <p className="text-gray-700">
+                合并到现有清单 <span className="font-medium text-blue-600">{collectResult.mergedCount}</span> 项，
+                新增 <span className="font-medium text-green-600">{collectResult.addedCount}</span> 项
+              </p>
+              <p className="text-gray-700">
+                当前清单进度：已购买 <span className="font-medium">{collectResult.purchasedCount}</span> / {collectResult.totalCount} 项
+              </p>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={() => setCollectResult(null)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                继续记录
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/shopping')}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                查看购物清单
+              </button>
+            </div>
           </div>
         </div>
       )}
